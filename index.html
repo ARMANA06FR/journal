@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#1f4e5f">
-<link rel="manifest" href="manifest.webmanifest">
+<link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <title>Journal de bord</title>
@@ -49,12 +49,15 @@ label{display:block;font-size:13px;color:var(--mu);margin:12px 0 4px}
 .view .txt{white-space:pre-wrap;margin:12px 0}
 .view a.doc{color:var(--tx);text-decoration:none;margin:6px 0}
 .sugg{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+#editor{z-index:30}
 [hidden]{display:none!important}
+#instBar{background:var(--ac);color:var(--bg);padding:8px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:14px}
 #warn{background:var(--danger);color:#fff;padding:8px 14px;font-size:14px}
 </style>
 </head>
 <body>
 <div id="warn" hidden>Stockage local indisponible : les entrées ne seront pas conservées.</div>
+<div id="instBar" hidden><span>Installer le journal sur cet appareil</span><button class="btn" id="instTop">Installer</button></div>
 <header>
   <h1><span>📓 Journal de bord</span><button class="btn" id="menuBtn" aria-label="Sauvegarde">⋯</button></h1>
   <input type="search" id="q" placeholder="Rechercher (mots-clés, titre, texte, document…)" autocomplete="off">
@@ -88,6 +91,8 @@ label{display:block;font-size:13px;color:var(--mu);margin:12px 0 4px}
 
 <div class="sheet" id="menu" hidden><div>
   <div class="bar"><button class="btn" id="mClose">← Retour</button><strong>Sauvegarde</strong><span></span></div>
+  <p><button class="btn p" id="inst">📲 Installer l'application</button></p><p class="meta" id="iMsg"></p>
+  <hr style="border:0;border-top:1px solid var(--bd);margin:18px 0">
   <p class="meta">Les données restent sur cet appareil. Exportez régulièrement une sauvegarde (photos et documents inclus).</p>
   <p><button class="btn p" id="exp">Exporter la sauvegarde</button></p>
   <p><input type="file" id="imp" accept="application/json" hidden><button class="btn" id="impBtn">Importer une sauvegarde</button></p>
@@ -163,7 +168,7 @@ $('#pickD').onclick=()=>$('#fDocs').click();
 $('#fPhotos').onchange=async e=>{for(const f of e.target.files){const b=await shrink(f);cur.photos.push({name:f.name,blob:b})}e.target.value='';drawAtt()};
 $('#fDocs').onchange=e=>{for(const f of e.target.files)cur.docs.push({name:f.name,type:f.type,blob:f});e.target.value='';drawAtt()};
 $('#add').onclick=()=>openEditor();
-$('#cancel').onclick=()=>{$('#editor').hidden=true;render()};
+$('#cancel').onclick=()=>{$('#editor').hidden=true;render();if(!$('#viewer').hidden)showView(viewId)};
 $('#save').onclick=async()=>{
   cur.date=$('#fDate').value||new Date().toLocaleDateString('sv-SE');cur.title=$('#fTitle').value.trim();cur.text=$('#fText').value.trim();
   cur.tags=[...new Set($('#fTags').value.split(',').map(s=>s.trim().replace(/^#/,'').toLowerCase()).filter(Boolean))];
@@ -202,6 +207,27 @@ $('#imp').onchange=async e=>{
     $('#mMsg').textContent=n+' entrée(s) importée(s).';await load()}catch(err){$('#mMsg').textContent='Fichier invalide.'}
   e.target.value='';
 };
+
+/* Installation */
+let dip=null;
+const standalone=()=>matchMedia('(display-mode: standalone)').matches||navigator.standalone;
+addEventListener('beforeinstallprompt',e=>{e.preventDefault();dip=e;if(!standalone())$('#instBar').hidden=false});
+addEventListener('appinstalled',()=>{dip=null;$('#instBar').hidden=true;$('#iMsg').textContent='Application installée.'});
+async function install(){
+  const m=$('#iMsg');$('#menu').hidden=false;
+  if(standalone()){m.textContent='L\'application est déjà installée et ouverte en mode application.';return}
+  if(dip){dip.prompt();const r=await dip.userChoice;dip=null;$('#instBar').hidden=true;m.textContent=r.outcome==='accepted'?'Installation en cours…':'Installation refusée.';return}
+  const ua=navigator.userAgent,ios=/iPhone|iPad|iPod/.test(ua);
+  let d=[];
+  if(ios)d.push('Sur iPhone/iPad : bouton Partager > « Sur l\'écran d\'accueil ».');
+  else{
+    if(!isSecureContext)d.push('❌ La page n\'est pas en HTTPS : l\'installation est impossible.');
+    if(!('serviceWorker' in navigator)||!navigator.serviceWorker.controller)d.push('❌ Le service worker n\'est pas encore actif : recharge la page une fois (ou deux), puis réessaie.');
+    d.push('Chrome ne propose pas l\'installation pour l\'instant. Causes fréquentes : un raccourci a déjà été créé pour ce site (supprime-le de l\'écran d\'accueil, puis recharge la page), ou l\'app est déjà installée. Sinon, menu ⋮ de Chrome > « Installer l\'application » (et non « Ajouter à l\'écran d\'accueil »).');
+  }
+  m.innerHTML=d.map(x=>'<span style="display:block;margin:6px 0">'+x+'</span>').join('');
+}
+$('#inst').onclick=install;$('#instTop').onclick=install;
 
 (async()=>{
   try{db=await openDB();if(navigator.storage&&navigator.storage.persist)navigator.storage.persist()}catch(e){$('#warn').hidden=false}

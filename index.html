@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1f4e5f">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Journal de bord</title>
+<style>
+:root{--bg:#f4efe6;--card:#fffdf8;--tx:#23303a;--mu:#6b7780;--ac:#1f4e5f;--ac2:#e0a458;--bd:#e2dacb;--danger:#b3412f;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#161d21;--card:#202a30;--tx:#e8e4da;--mu:#98a4ab;--ac:#7fc0d4;--ac2:#e0a458;--bd:#33414a;--danger:#e57a66;color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+body{padding-bottom:calc(90px + env(safe-area-inset-bottom,0px))}
+header{position:sticky;top:0;z-index:5;background:var(--bg);padding:calc(10px + env(safe-area-inset-top,0px)) 14px 8px;border-bottom:1px solid var(--bd)}
+h1{font:600 20px Georgia,serif;margin:0 0 8px;display:flex;justify-content:space-between;align-items:center}
+input,textarea,button{font:inherit;color:inherit}
+input[type=search],input[type=text],input[type=date],textarea{width:100%;padding:10px 12px;border:1px solid var(--bd);border-radius:10px;background:var(--card)}
+textarea{min-height:140px;resize:vertical}
+.chips{display:flex;gap:6px;overflow-x:auto;padding:8px 0 2px;scrollbar-width:none}
+.chip{flex:none;border:1px solid var(--bd);background:var(--card);border-radius:99px;padding:3px 11px;font-size:14px;cursor:pointer}
+.chip.on{background:var(--ac);color:var(--bg);border-color:var(--ac)}
+main{padding:12px 14px;max-width:760px;margin:auto}
+.day{font:600 13px system-ui;text-transform:capitalize;color:var(--mu);margin:16px 2px 6px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:12px 14px;margin-bottom:10px;cursor:pointer}
+.card h3{margin:0 0 4px;font-size:17px}
+.card p{margin:0 0 8px;color:var(--mu);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-wrap}
+.thumbs{display:flex;gap:6px;margin:6px 0}
+.thumbs img{width:64px;height:64px;object-fit:cover;border-radius:8px}
+.tag{font-size:13px;color:var(--ac);margin-right:8px}
+.meta{font-size:13px;color:var(--mu)}
+.empty{text-align:center;color:var(--mu);margin:50px 10px}
+.fab{position:fixed;right:18px;bottom:calc(18px + env(safe-area-inset-bottom,0px));width:58px;height:58px;border-radius:50%;border:0;background:var(--ac);color:var(--bg);font-size:30px;box-shadow:0 4px 14px #0004;cursor:pointer}
+.sheet{position:fixed;inset:0;z-index:20;background:var(--bg);overflow:auto;padding:calc(12px + env(safe-area-inset-top,0px)) 14px calc(24px + env(safe-area-inset-bottom,0px))}
+.sheet>div{max-width:760px;margin:auto}
+.bar{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-bottom:12px}
+.btn{border:1px solid var(--bd);background:var(--card);border-radius:10px;padding:9px 14px;cursor:pointer}
+.btn.p{background:var(--ac);color:var(--bg);border-color:var(--ac)}
+.btn.d{color:var(--danger)}
+label{display:block;font-size:13px;color:var(--mu);margin:12px 0 4px}
+.att{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.att .it{position:relative}
+.att img{width:84px;height:84px;object-fit:cover;border-radius:10px;display:block}
+.att .x{position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:50%;border:0;background:var(--danger);color:#fff;cursor:pointer;line-height:1}
+.doc{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--bd);border-radius:10px;background:var(--card);font-size:14px}
+.view img.big{width:100%;border-radius:12px;margin:6px 0}
+.view .txt{white-space:pre-wrap;margin:12px 0}
+.view a.doc{color:var(--tx);text-decoration:none;margin:6px 0}
+.sugg{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+[hidden]{display:none!important}
+#warn{background:var(--danger);color:#fff;padding:8px 14px;font-size:14px}
+</style>
+</head>
+<body>
+<div id="warn" hidden>Stockage local indisponible : les entrées ne seront pas conservées.</div>
+<header>
+  <h1><span>📓 Journal de bord</span><button class="btn" id="menuBtn" aria-label="Sauvegarde">⋯</button></h1>
+  <input type="search" id="q" placeholder="Rechercher (mots-clés, titre, texte, document…)" autocomplete="off">
+  <div class="chips" id="chips"></div>
+</header>
+<main id="list"></main>
+<button class="fab" id="add" aria-label="Nouvelle entrée">+</button>
+
+<div class="sheet" id="editor" hidden><div>
+  <div class="bar"><button class="btn" id="cancel">Annuler</button><strong id="edTitle">Nouvelle entrée</strong><button class="btn p" id="save">Enregistrer</button></div>
+  <label for="fDate">Date</label><input type="date" id="fDate">
+  <label for="fTitle">Titre</label><input type="text" id="fTitle" placeholder="Ex. : Signature chez le notaire">
+  <label for="fText">Ce qui s'est passé</label><textarea id="fText"></textarea>
+  <label for="fTags">Mots-clés (séparés par des virgules)</label><input type="text" id="fTags" placeholder="famille, travaux, santé…">
+  <div class="sugg" id="sugg"></div>
+  <label>Photos</label>
+  <input type="file" id="fPhotos" accept="image/*" multiple hidden>
+  <button class="btn" id="pickP">📷 Ajouter des photos</button>
+  <div class="att" id="attP"></div>
+  <label>Documents</label>
+  <input type="file" id="fDocs" multiple hidden>
+  <button class="btn" id="pickD">📎 Ajouter des documents</button>
+  <div class="att" id="attD" style="flex-direction:column"></div>
+  <p><button class="btn d" id="del" hidden>Supprimer cette entrée</button></p>
+</div></div>
+
+<div class="sheet" id="viewer" hidden><div class="view">
+  <div class="bar"><button class="btn" id="back">← Retour</button><button class="btn" id="edit">Modifier</button></div>
+  <div id="vBody"></div>
+</div></div>
+
+<div class="sheet" id="menu" hidden><div>
+  <div class="bar"><button class="btn" id="mClose">← Retour</button><strong>Sauvegarde</strong><span></span></div>
+  <p class="meta">Les données restent sur cet appareil. Exportez régulièrement une sauvegarde (photos et documents inclus).</p>
+  <p><button class="btn p" id="exp">Exporter la sauvegarde</button></p>
+  <p><input type="file" id="imp" accept="application/json" hidden><button class="btn" id="impBtn">Importer une sauvegarde</button></p>
+  <p class="meta" id="mMsg"></p>
+</div></div>
+
+<script>
+const $=s=>document.querySelector(s);
+const norm=s=>(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let db=null,entries=[],q='',tagF=null,cur=null,viewId=null,urls=[];
+
+function openDB(){return new Promise((res,rej)=>{try{const r=indexedDB.open('journal-de-bord',1);r.onupgradeneeded=()=>r.result.createObjectStore('entries',{keyPath:'id'});r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)}catch(e){rej(e)}})}
+function run(mode,fn){return new Promise((res,rej)=>{const t=db.transaction('entries',mode);const rq=fn(t.objectStore('entries'));t.oncomplete=()=>res(rq&&rq.result);t.onerror=()=>rej(t.error)})}
+async function load(){if(db){try{entries=await run('readonly',s=>s.getAll())}catch(e){entries=[]}}render()}
+async function put(e){if(db){await run('readwrite',s=>s.put(e))}else{entries=entries.filter(x=>x.id!==e.id).concat(e)}}
+async function remove(id){if(db){await run('readwrite',s=>s.delete(id))}else{entries=entries.filter(x=>x.id!==id)}}
+
+const url=b=>{const u=URL.createObjectURL(b);urls.push(u);return u};
+const fmt=d=>new Date(d+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+const hay=e=>norm([e.title,e.text,(e.tags||[]).join(' '),(e.docs||[]).map(d=>d.name).join(' '),(e.photos||[]).map(d=>d.name).join(' ')].join(' '));
+const allTags=()=>{const m={};entries.forEach(e=>(e.tags||[]).forEach(t=>m[t]=(m[t]||0)+1));return Object.entries(m).sort((a,b)=>b[1]-a[1]).map(x=>x[0])};
+
+function render(){
+  urls.splice(0).forEach(u=>URL.revokeObjectURL(u));
+  const terms=norm(q).split(/\s+/).filter(Boolean);
+  let list=entries.filter(e=>(!tagF||(e.tags||[]).includes(tagF))&&terms.every(t=>hay(e).includes(t)));
+  list.sort((a,b)=>b.date.localeCompare(a.date)||b.created-a.created);
+  $('#chips').innerHTML=allTags().map(t=>`<button class="chip ${t===tagF?'on':''}" data-t="${esc(t)}">#${esc(t)}</button>`).join('');
+  if(!list.length){$('#list').innerHTML=`<div class="empty">${entries.length?'Aucun résultat.':'Votre journal est vide.<br>Appuyez sur + pour noter un premier évènement.'}</div>`;return}
+  let html='',last='';
+  for(const e of list){
+    if(e.date!==last){html+=`<div class="day">${fmt(e.date)}</div>`;last=e.date}
+    const th=(e.photos||[]).slice(0,4).map(p=>`<img src="${url(p.blob)}" alt="">`).join('');
+    html+=`<div class="card" data-id="${e.id}"><h3>${esc(e.title||'Sans titre')}</h3>${e.text?`<p>${esc(e.text)}</p>`:''}${th?`<div class="thumbs">${th}</div>`:''}<div>${(e.tags||[]).map(t=>`<span class="tag">#${esc(t)}</span>`).join('')}</div><div class="meta">${(e.photos||[]).length?'📷 '+e.photos.length+' ':''}${(e.docs||[]).length?'📎 '+e.docs.length:''}</div></div>`;
+  }
+  $('#list').innerHTML=html;
+}
+
+$('#q').oninput=e=>{q=e.target.value;render()};
+$('#chips').onclick=e=>{const t=e.target.dataset.t;if(t){tagF=tagF===t?null:t;render()}};
+$('#list').onclick=e=>{const c=e.target.closest('.card');if(c)showView(c.dataset.id)};
+
+/* Image reduite pour economiser l'espace */
+async function shrink(file){
+  try{const bmp=await createImageBitmap(file);const k=Math.min(1,1600/Math.max(bmp.width,bmp.height));
+    const c=document.createElement('canvas');c.width=Math.round(bmp.width*k);c.height=Math.round(bmp.height*k);
+    c.getContext('2d').drawImage(bmp,0,0,c.width,c.height);
+    const b=await new Promise(r=>c.toBlob(r,'image/jpeg',.82));return b&&b.size<file.size?b:file}catch(e){return file}
+}
+
+/* Edition */
+function openEditor(e){
+  cur=e?{...e,tags:[...(e.tags||[])],photos:[...(e.photos||[])],docs:[...(e.docs||[])]}:{id:crypto.randomUUID?crypto.randomUUID():String(Date.now()),date:new Date().toLocaleDateString('sv-SE'),title:'',text:'',tags:[],photos:[],docs:[],created:Date.now()};
+  $('#edTitle').textContent=e?'Modifier':'Nouvelle entrée';
+  $('#fDate').value=cur.date;$('#fTitle').value=cur.title;$('#fText').value=cur.text;$('#fTags').value=cur.tags.join(', ');
+  $('#del').hidden=!e;drawAtt();drawSugg();$('#editor').hidden=false;
+}
+function drawAtt(){
+  urls.splice(0).forEach(u=>URL.revokeObjectURL(u));
+  $('#attP').innerHTML=cur.photos.map((p,i)=>`<div class="it"><img src="${url(p.blob)}" alt=""><button class="x" data-k="p" data-i="${i}">×</button></div>`).join('');
+  $('#attD').innerHTML=cur.docs.map((d,i)=>`<div class="doc">📄 <span style="flex:1;overflow:hidden;text-overflow:ellipsis">${esc(d.name)}</span><button class="x" style="position:static" data-k="d" data-i="${i}">×</button></div>`).join('');
+}
+function drawSugg(){
+  const have=$('#fTags').value.split(',').map(s=>s.trim().toLowerCase());
+  $('#sugg').innerHTML=allTags().filter(t=>!have.includes(t)).slice(0,10).map(t=>`<button class="chip" data-t="${esc(t)}">+ ${esc(t)}</button>`).join('');
+}
+$('#sugg').onclick=e=>{const t=e.target.dataset.t;if(t){const f=$('#fTags');f.value=(f.value.trim().replace(/,$/,'')+(f.value.trim()?', ':'')+t);drawSugg()}};
+$('#fTags').oninput=drawSugg;
+$('#editor').onclick=e=>{const b=e.target.closest('.x');if(!b)return;(b.dataset.k==='p'?cur.photos:cur.docs).splice(+b.dataset.i,1);drawAtt()};
+$('#pickP').onclick=()=>$('#fPhotos').click();
+$('#pickD').onclick=()=>$('#fDocs').click();
+$('#fPhotos').onchange=async e=>{for(const f of e.target.files){const b=await shrink(f);cur.photos.push({name:f.name,blob:b})}e.target.value='';drawAtt()};
+$('#fDocs').onchange=e=>{for(const f of e.target.files)cur.docs.push({name:f.name,type:f.type,blob:f});e.target.value='';drawAtt()};
+$('#add').onclick=()=>openEditor();
+$('#cancel').onclick=()=>{$('#editor').hidden=true;render()};
+$('#save').onclick=async()=>{
+  cur.date=$('#fDate').value||new Date().toLocaleDateString('sv-SE');cur.title=$('#fTitle').value.trim();cur.text=$('#fText').value.trim();
+  cur.tags=[...new Set($('#fTags').value.split(',').map(s=>s.trim().replace(/^#/,'').toLowerCase()).filter(Boolean))];
+  if(!cur.title&&!cur.text&&!cur.photos.length&&!cur.docs.length){alert('Entrée vide.');return}
+  try{await put(cur)}catch(err){alert('Enregistrement impossible : '+err.message);return}
+  $('#editor').hidden=true;await load();if(viewId===cur.id&&!$('#viewer').hidden)showView(cur.id);
+};
+$('#del').onclick=async()=>{if(confirm('Supprimer définitivement cette entrée ?')){await remove(cur.id);$('#editor').hidden=true;$('#viewer').hidden=true;await load()}};
+
+/* Lecture */
+function showView(id){
+  const e=entries.find(x=>x.id===id);if(!e)return;viewId=id;
+  $('#vBody').innerHTML=`<div class="meta" style="text-transform:capitalize">${fmt(e.date)}</div><h2 style="margin:4px 0">${esc(e.title||'Sans titre')}</h2><div>${(e.tags||[]).map(t=>`<span class="tag">#${esc(t)}</span>`).join('')}</div><div class="txt">${esc(e.text)}</div>${(e.photos||[]).map(p=>`<img class="big" src="${url(p.blob)}" alt="${esc(p.name)}">`).join('')}${(e.docs||[]).map(d=>`<a class="doc" href="${url(d.blob)}" download="${esc(d.name)}" target="_blank" rel="noopener">📄 ${esc(d.name)}</a>`).join('')}`;
+  $('#viewer').hidden=false;$('#viewer').scrollTop=0;
+}
+$('#back').onclick=()=>{$('#viewer').hidden=true;render()};
+$('#edit').onclick=()=>openEditor(entries.find(x=>x.id===viewId));
+
+/* Sauvegarde */
+const toB64=b=>new Promise(r=>{const f=new FileReader();f.onload=()=>r(f.result);f.readAsDataURL(b)});
+const att=async a=>({name:a.name,type:a.blob.type,data:await toB64(a.blob)});
+const unatt=async a=>({name:a.name,blob:await (await fetch(a.data)).blob()});
+$('#menuBtn').onclick=()=>{$('#mMsg').textContent='';$('#menu').hidden=false};
+$('#mClose').onclick=()=>$('#menu').hidden=true;
+$('#exp').onclick=async()=>{
+  $('#mMsg').textContent='Préparation…';
+  const out=[];for(const e of entries)out.push({...e,photos:await Promise.all((e.photos||[]).map(att)),docs:await Promise.all((e.docs||[]).map(att))});
+  const b=new Blob([JSON.stringify({v:1,entries:out})],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='journal-'+new Date().toLocaleDateString('sv-SE')+'.json';a.click();
+  $('#mMsg').textContent=out.length+' entrée(s) exportée(s).';
+};
+$('#impBtn').onclick=()=>$('#imp').click();
+$('#imp').onchange=async e=>{
+  try{const j=JSON.parse(await e.target.files[0].text());let n=0;
+    for(const x of j.entries){x.photos=await Promise.all((x.photos||[]).map(unatt));x.docs=await Promise.all((x.docs||[]).map(unatt));await put(x);n++}
+    $('#mMsg').textContent=n+' entrée(s) importée(s).';await load()}catch(err){$('#mMsg').textContent='Fichier invalide.'}
+  e.target.value='';
+};
+
+(async()=>{
+  try{db=await openDB();if(navigator.storage&&navigator.storage.persist)navigator.storage.persist()}catch(e){$('#warn').hidden=false}
+  await load();
+  if('serviceWorker' in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('sw.js').catch(()=>{});
+})();
+</script>
+</body>
+</html>

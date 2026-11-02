@@ -50,6 +50,19 @@ label{display:block;font-size:13px;color:var(--mu);margin:12px 0 4px}
 .view a.doc{color:var(--tx);text-decoration:none;margin:6px 0}
 .sugg{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
 #editor{z-index:30}
+.tabs{display:flex;gap:6px;margin-bottom:8px}
+.tabs button{flex:1;padding:9px;border:1px solid var(--bd);border-radius:10px;background:var(--card);cursor:pointer;font-weight:600}
+.tabs button.on{background:var(--ac);color:var(--bg);border-color:var(--ac)}
+.todo{display:flex;gap:10px;align-items:flex-start;background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:10px 12px;margin-bottom:8px}
+.ck{flex:none;width:28px;height:28px;border-radius:50%;border:2px solid var(--ac);background:transparent;color:var(--bg);cursor:pointer;font-size:16px;line-height:1;padding:0}
+.todo.done .ck{background:var(--ac)}
+.todo.done .tt{text-decoration:line-through;color:var(--mu)}
+.tx{flex:1;min-width:0}.tt{overflow-wrap:anywhere;padding-top:3px}
+.rm{flex:none;border:0;background:none;color:var(--mu);font-size:22px;cursor:pointer;line-height:1}
+.lnk{border:0;background:none;color:var(--ac);padding:0;cursor:pointer;font-size:13px;text-decoration:underline}
+.dlg{position:fixed;inset:0;z-index:40;background:#0007;display:flex;align-items:flex-end}
+.dlg>div{width:100%;max-width:760px;margin:0 auto;background:var(--bg);border-radius:18px 18px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:8px}
+.add{display:flex;gap:8px;margin-bottom:12px}
 [hidden]{display:none!important}
 #instBar{background:var(--ac);color:var(--bg);padding:8px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:14px}
 #warn{background:var(--danger);color:#fff;padding:8px 14px;font-size:14px}
@@ -60,10 +73,15 @@ label{display:block;font-size:13px;color:var(--mu);margin:12px 0 4px}
 <div id="instBar" hidden><span>Installer le journal sur cet appareil</span><button class="btn" id="instTop">Installer</button></div>
 <header>
   <h1><span>📓 Journal de bord</span><button class="btn" id="menuBtn" aria-label="Sauvegarde">⋯</button></h1>
-  <input type="search" id="q" placeholder="Rechercher (mots-clés, titre, texte, document…)" autocomplete="off">
-  <div class="chips" id="chips"></div>
+  <div class="tabs"><button data-tab="j" class="on">📓 Journal</button><button data-tab="t">✅ À faire <span id="tcount"></span></button></div>
+  <div id="jSearch"><input type="search" id="q" placeholder="Rechercher (mots-clés, titre, texte, document…)" autocomplete="off">
+  <div class="chips" id="chips"></div></div>
 </header>
 <main id="list"></main>
+<main id="todo" hidden>
+  <div class="add"><input type="text" id="tIn" placeholder="Nouvelle tâche à faire…" autocomplete="off"><button class="btn p" id="tAdd">Ajouter</button></div>
+  <div id="tList"></div>
+</main>
 <button class="fab" id="add" aria-label="Nouvelle entrée">+</button>
 
 <div class="sheet" id="editor" hidden><div>
@@ -99,15 +117,27 @@ label{display:block;font-size:13px;color:var(--mu);margin:12px 0 4px}
   <p class="meta" id="mMsg"></p>
 </div></div>
 
+<div class="dlg" id="ask" hidden><div>
+  <strong id="askT"></strong>
+  <p class="meta" style="margin:0 0 6px">Ajouter cette tâche au journal de bord, à la date du jour où elle a été cochée ?</p>
+  <button class="btn p" id="aQuick">📓 Ajouter au journal</button>
+  <button class="btn" id="aEdit">✏️ Ajouter avec photos / détails</button>
+  <button class="btn" id="aNo">Non merci</button>
+</div></div>
+
 <script>
 const $=s=>document.querySelector(s);
 const norm=s=>(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let db=null,entries=[],q='',tagF=null,cur=null,viewId=null,urls=[];
+let db=null,entries=[],q='',tagF=null,cur=null,viewId=null,urls=[],todos=[],tab='j';
+const uid=()=>crypto.randomUUID?crypto.randomUUID():Date.now()+Math.random().toString(36).slice(2);
+const today=()=>new Date().toLocaleDateString('sv-SE');
 
-function openDB(){return new Promise((res,rej)=>{try{const r=indexedDB.open('journal-de-bord',1);r.onupgradeneeded=()=>r.result.createObjectStore('entries',{keyPath:'id'});r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)}catch(e){rej(e)}})}
-function run(mode,fn){return new Promise((res,rej)=>{const t=db.transaction('entries',mode);const rq=fn(t.objectStore('entries'));t.oncomplete=()=>res(rq&&rq.result);t.onerror=()=>rej(t.error)})}
-async function load(){if(db){try{entries=await run('readonly',s=>s.getAll())}catch(e){entries=[]}}render()}
+function openDB(){return new Promise((res,rej)=>{try{const r=indexedDB.open('journal-de-bord',2);r.onupgradeneeded=()=>{const d=r.result;if(!d.objectStoreNames.contains('entries'))d.createObjectStore('entries',{keyPath:'id'});if(!d.objectStoreNames.contains('todos'))d.createObjectStore('todos',{keyPath:'id'})};r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)}catch(e){rej(e)}})}
+function run(mode,fn,st='entries'){return new Promise((res,rej)=>{const t=db.transaction(st,mode);const rq=fn(t.objectStore(st));t.oncomplete=()=>res(rq&&rq.result);t.onerror=()=>rej(t.error)})}
+async function load(){if(db){try{entries=await run('readonly',s=>s.getAll())}catch(e){entries=[]}try{todos=await run('readonly',s=>s.getAll(),'todos')}catch(e){todos=[]}}render();renderTodos()}
+async function putTodo(t){if(db){await run('readwrite',s=>s.put(t),'todos')}else{todos=todos.filter(x=>x.id!==t.id).concat(t)}}
+async function delTodo(id){if(db){await run('readwrite',s=>s.delete(id),'todos')}else{todos=todos.filter(x=>x.id!==id)}}
 async function put(e){if(db){await run('readwrite',s=>s.put(e))}else{entries=entries.filter(x=>x.id!==e.id).concat(e)}}
 async function remove(id){if(db){await run('readwrite',s=>s.delete(id))}else{entries=entries.filter(x=>x.id!==id)}}
 
@@ -145,8 +175,9 @@ async function shrink(file){
 }
 
 /* Edition */
-function openEditor(e){
+function openEditor(e,pre){
   cur=e?{...e,tags:[...(e.tags||[])],photos:[...(e.photos||[])],docs:[...(e.docs||[])]}:{id:crypto.randomUUID?crypto.randomUUID():String(Date.now()),date:new Date().toLocaleDateString('sv-SE'),title:'',text:'',tags:[],photos:[],docs:[],created:Date.now()};
+  if(pre)Object.assign(cur,pre);
   $('#edTitle').textContent=e?'Modifier':'Nouvelle entrée';
   $('#fDate').value=cur.date;$('#fTitle').value=cur.title;$('#fText').value=cur.text;$('#fTags').value=cur.tags.join(', ');
   $('#del').hidden=!e;drawAtt();drawSugg();$('#editor').hidden=false;
@@ -174,6 +205,7 @@ $('#save').onclick=async()=>{
   cur.tags=[...new Set($('#fTags').value.split(',').map(s=>s.trim().replace(/^#/,'').toLowerCase()).filter(Boolean))];
   if(!cur.title&&!cur.text&&!cur.photos.length&&!cur.docs.length){alert('Entrée vide.');return}
   try{await put(cur)}catch(err){alert('Enregistrement impossible : '+err.message);return}
+  if(cur.fromTodo){const t=todos.find(x=>x.id===cur.fromTodo);if(t){t.entryId=cur.id;await putTodo(t)}}
   $('#editor').hidden=true;await load();if(viewId===cur.id&&!$('#viewer').hidden)showView(cur.id);
 };
 $('#del').onclick=async()=>{if(confirm('Supprimer définitivement cette entrée ?')){await remove(cur.id);$('#editor').hidden=true;$('#viewer').hidden=true;await load()}};
@@ -196,17 +228,47 @@ $('#mClose').onclick=()=>$('#menu').hidden=true;
 $('#exp').onclick=async()=>{
   $('#mMsg').textContent='Préparation…';
   const out=[];for(const e of entries)out.push({...e,photos:await Promise.all((e.photos||[]).map(att)),docs:await Promise.all((e.docs||[]).map(att))});
-  const b=new Blob([JSON.stringify({v:1,entries:out})],{type:'application/json'});
+  const b=new Blob([JSON.stringify({v:2,entries:out,todos})],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='journal-'+new Date().toLocaleDateString('sv-SE')+'.json';a.click();
-  $('#mMsg').textContent=out.length+' entrée(s) exportée(s).';
+  $('#mMsg').textContent=out.length+' entrée(s) et '+todos.length+' tâche(s) exportée(s).';
 };
 $('#impBtn').onclick=()=>$('#imp').click();
 $('#imp').onchange=async e=>{
   try{const j=JSON.parse(await e.target.files[0].text());let n=0;
-    for(const x of j.entries){x.photos=await Promise.all((x.photos||[]).map(unatt));x.docs=await Promise.all((x.docs||[]).map(unatt));await put(x);n++}
-    $('#mMsg').textContent=n+' entrée(s) importée(s).';await load()}catch(err){$('#mMsg').textContent='Fichier invalide.'}
+    for(const x of (j.entries||[])){x.photos=await Promise.all((x.photos||[]).map(unatt));x.docs=await Promise.all((x.docs||[]).map(unatt));await put(x);n++}
+    for(const t of (j.todos||[]))await putTodo(t);$('#mMsg').textContent=n+' entrée(s) et '+(j.todos||[]).length+' tâche(s) importée(s).';await load()}catch(err){$('#mMsg').textContent='Fichier invalide.'}
   e.target.value='';
 };
+
+/* A faire */
+const fmtShort=d=>d?new Date(d+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'}):'';
+function renderTodos(){
+  const pend=todos.filter(t=>!t.done).sort((a,b)=>b.created-a.created);
+  const done=todos.filter(t=>t.done).sort((a,b)=>(b.doneAt||'').localeCompare(a.doneAt||'')||b.created-a.created);
+  $('#tcount').textContent=pend.length?'('+pend.length+')':'';
+  const row=t=>{const en=t.entryId&&entries.find(e=>e.id===t.entryId);
+    return `<div class="todo ${t.done?'done':''}" data-id="${t.id}"><button class="ck" data-a="ck" aria-label="${t.done?'Décocher':'Cocher'}">${t.done?'✓':''}</button><div class="tx"><div class="tt">${esc(t.text)}</div>${t.done?`<div class="meta">Fait le ${fmtShort(t.doneAt)} · ${en?'<button class="lnk" data-a="open">📓 Voir dans le journal</button>':'<button class="lnk" data-a="tojournal">+ Ajouter au journal</button>'}</div>`:''}</div><button class="rm" data-a="rm" aria-label="Supprimer">×</button></div>`};
+  $('#tList').innerHTML=(pend.length?pend.map(row).join(''):'<div class="empty">Rien à faire pour le moment 🎉</div>')+(done.length?`<div class="day">Terminées (${done.length})</div>`+done.map(row).join(''):'');
+}
+async function addTodo(){const v=$('#tIn').value.trim();if(!v)return;$('#tIn').value='';await putTodo({id:uid(),text:v,done:false,doneAt:null,created:Date.now(),entryId:null});await load()}
+$('#tAdd').onclick=addTodo;$('#tIn').onkeydown=e=>{if(e.key==='Enter')addTodo()};
+let askId=null;
+function ask(id){const t=todos.find(x=>x.id===id);if(!t)return;askId=id;$('#askT').textContent='« '+t.text+' » ✓';$('#ask').hidden=false}
+const mkEntry=t=>({id:uid(),date:t.doneAt||today(),title:t.text,text:'',tags:['fait'],photos:[],docs:[],created:Date.now(),fromTodo:t.id});
+$('#aNo').onclick=()=>{$('#ask').hidden=true};
+$('#aQuick').onclick=async()=>{const t=todos.find(x=>x.id===askId);$('#ask').hidden=true;if(!t)return;const en=mkEntry(t);await put(en);t.entryId=en.id;await putTodo(t);await load()};
+$('#aEdit').onclick=()=>{const t=todos.find(x=>x.id===askId);$('#ask').hidden=true;if(t)openEditor(null,mkEntry(t))};
+$('#tList').onclick=async e=>{
+  const b=e.target.closest('[data-a]');if(!b)return;const t=todos.find(x=>x.id===b.closest('.todo').dataset.id);if(!t)return;const a=b.dataset.a;
+  if(a==='ck'){if(t.done){t.done=false;t.doneAt=null;t.entryId=null;await putTodo(t);await load()}else{t.done=true;t.doneAt=today();await putTodo(t);await load();ask(t.id)}}
+  else if(a==='rm'){if(confirm('Supprimer cette tâche ? (l\'entrée du journal éventuelle est conservée)')){await delTodo(t.id);await load()}}
+  else if(a==='open')showView(t.entryId);
+  else if(a==='tojournal')ask(t.id);
+};
+function setTab(t){tab=t;document.querySelectorAll('.tabs button').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));
+  $('#jSearch').hidden=$('#list').hidden=$('#add').hidden=t!=='j';$('#todo').hidden=t!=='t';try{localStorage.setItem('tab',t)}catch(e){}}
+document.querySelector('.tabs').onclick=e=>{const b=e.target.closest('button');if(b)setTab(b.dataset.tab)};
+try{if(localStorage.getItem('tab')==='t')setTab('t')}catch(e){}
 
 /* Installation */
 let dip=null;

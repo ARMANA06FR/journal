@@ -57,7 +57,7 @@ label{display:block;font-size:13px;color:var(--mu);margin:12px 0 4px}
 .ck{flex:none;width:28px;height:28px;border-radius:50%;border:2px solid var(--ac);background:transparent;color:var(--bg);cursor:pointer;font-size:16px;line-height:1;padding:0}
 .todo.done .ck{background:var(--ac)}
 .todo.done .tt{text-decoration:line-through;color:var(--mu)}
-.tx{flex:1;min-width:0}.tt{overflow-wrap:anywhere;padding-top:3px}
+.tx{flex:1;min-width:0}.tt{overflow-wrap:anywhere;padding-top:3px;cursor:text}
 .rm{flex:none;border:0;background:none;color:var(--mu);font-size:22px;cursor:pointer;line-height:1}
 .lnk{border:0;background:none;color:var(--ac);padding:0;cursor:pointer;font-size:13px;text-decoration:underline}
 .dlg{position:fixed;inset:0;z-index:40;background:#0007;display:flex;align-items:flex-end}
@@ -258,7 +258,17 @@ const mkEntry=t=>({id:uid(),date:t.doneAt||today(),title:t.text,text:'',tags:['f
 $('#aNo').onclick=()=>{$('#ask').hidden=true};
 $('#aQuick').onclick=async()=>{const t=todos.find(x=>x.id===askId);$('#ask').hidden=true;if(!t)return;const en=mkEntry(t);await put(en);t.entryId=en.id;await putTodo(t);await load()};
 $('#aEdit').onclick=()=>{const t=todos.find(x=>x.id===askId);$('#ask').hidden=true;if(t)openEditor(null,mkEntry(t))};
+function editTodo(tt,t){
+  const i=document.createElement('input');i.type='text';i.value=t.text;
+  tt.replaceWith(i);i.focus();i.select();
+  let fin=false;
+  const end=async ok=>{if(fin)return;fin=true;const v=i.value.trim();if(ok&&v&&v!==t.text){t.text=v;await putTodo(t)}await load()};
+  i.onkeydown=e=>{if(e.key==='Enter')end(true);else if(e.key==='Escape')end(false)};
+  i.onblur=()=>end(true);
+}
 $('#tList').onclick=async e=>{
+  const tt=e.target.closest('.tt');
+  if(tt){const t0=todos.find(x=>x.id===tt.closest('.todo').dataset.id);if(t0)editTodo(tt,t0);return}
   const b=e.target.closest('[data-a]');if(!b)return;const t=todos.find(x=>x.id===b.closest('.todo').dataset.id);if(!t)return;const a=b.dataset.a;
   if(a==='ck'){if(t.done){t.done=false;t.doneAt=null;t.entryId=null;await putTodo(t);await load()}else{t.done=true;t.doneAt=today();await putTodo(t);await load();ask(t.id)}}
   else if(a==='rm'){if(confirm('Supprimer cette tâche ? (l\'entrée du journal éventuelle est conservée)')){await delTodo(t.id);await load()}}
